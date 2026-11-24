@@ -88,15 +88,20 @@ static int inside_pupil(int x, int y, int diameter, float offset_x, float offset
     return dx * dx + dy * dy <= (float)diameter * (float)diameter;
 }
 
-static int inside_highlight(int x, int y, float offset_x, float offset_y)
+static int inside_highlight(int x, int y, float highlight_x, float offset_x, float offset_y)
 {
-    const float dx = x - (HIGHLIGHT_X + offset_x);
+    const float dx = x - (highlight_x + offset_x);
     const float dy = y - (HIGHLIGHT_Y + offset_y);
     return dx * dx + dy * dy <= HIGHLIGHT_RADIUS_SQ;
 }
 
-uint16_t pupil_scene_color(int x, int y, int diameter, float offset_x, float offset_y)
+uint16_t pupil_scene_color(int x, int y, int diameter, float offset_x, float offset_y, int mirror)
 {
+    const float highlight_x = mirror ? (240.0f - HIGHLIGHT_X) : HIGHLIGHT_X;
+
+    if (mirror) {
+        offset_x = -offset_x;
+    }
     if (diameter < PUPIL_DIAMETER_MIN) {
         diameter = PUPIL_DIAMETER_MIN;
     }
@@ -105,17 +110,17 @@ uint16_t pupil_scene_color(int x, int y, int diameter, float offset_x, float off
     }
 
     if (inside_pupil(x, y, diameter, offset_x, offset_y)) {
-        return inside_highlight(x, y, offset_x, offset_y) ? PUPIL_COLOR_SCLERA : PUPIL_COLOR_BLACK;
+        return inside_highlight(x, y, highlight_x, offset_x, offset_y) ? PUPIL_COLOR_SCLERA : PUPIL_COLOR_BLACK;
     }
     return PUPIL_COLOR_SCLERA;
 }
 
-void pupil_render_stripe(uint16_t *pixels, int y0, int line_count, int diameter, float offset_x, float offset_y)
+void pupil_render_stripe(uint16_t *pixels, int y0, int line_count, int diameter, float offset_x, float offset_y, int mirror)
 {
     for (int row = 0; row < line_count; row++) {
         const int y = y0 + row;
         for (int x = 0; x < PUPIL_VIEW_SIZE; x++) {
-            pixels[row * PUPIL_VIEW_SIZE + x] = pupil_scene_color(x, y, diameter, offset_x, offset_y);
+            pixels[row * PUPIL_VIEW_SIZE + x] = pupil_scene_color(x, y, diameter, offset_x, offset_y, mirror);
         }
     }
 }

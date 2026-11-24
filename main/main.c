@@ -19,7 +19,8 @@
 #define PIN_MOSI 23
 #define PIN_DC 21
 #define PIN_RST 22
-#define PIN_CS 5
+#define EYE1_CS 5
+#define EYE2_CS 25
 
 #define LCD_WIDTH 240
 #define LCD_HEIGHT 240
@@ -73,7 +74,7 @@ static void pupil_rect(int diameter, float offset_x, float offset_y, int *x0, in
 }
 
 static void draw_region(esp_lcd_panel_handle_t panel, uint16_t *buf, int x0, int y0, int x1, int y1,
-                        int diameter, float offset_x, float offset_y)
+                        int diameter, float offset_x, float offset_y, int mirror)
 {
     const int width = x1 - x0;
     const int height = y1 - y0;
@@ -93,7 +94,7 @@ static void draw_region(esp_lcd_panel_handle_t panel, uint16_t *buf, int x0, int
 
         for (int row = 0; row < rows; row++) {
             for (int col = 0; col < width; col++) {
-                const uint16_t color = pupil_scene_color(x0 + col, y + row, diameter, offset_x, offset_y);
+                const uint16_t color = pupil_scene_color(x0 + col, y + row, diameter, offset_x, offset_y, mirror);
                 buf[row * width + col] = wire565(color);
             }
         }
@@ -121,7 +122,7 @@ static void fill_sclera(esp_lcd_panel_handle_t panel, uint16_t *buf)
     }
 }
 
-static esp_lcd_panel_handle_t start_panel(void)
+static void start_bus(void)
 {
     spi_bus_config_t bus_config = {
         .mosi_io_num = PIN_MOSI,
@@ -132,10 +133,13 @@ static esp_lcd_panel_handle_t start_panel(void)
         .max_transfer_sz = DRAW_BUF_PIXELS * (int)sizeof(uint16_t),
     };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &bus_config, SPI_DMA_CH_AUTO));
+}
 
+static esp_lcd_panel_handle_t start_panel(int cs, int reset_gpio)
+{
     esp_lcd_panel_io_handle_t io = NULL;
     esp_lcd_panel_io_spi_config_t io_config = {
-        .cs_gpio_num = PIN_CS,
+        .cs_gpio_num = cs,
         .dc_gpio_num = PIN_DC,
         .spi_mode = 0,
         .pclk_hz = LCD_PCLK_HZ,
@@ -148,7 +152,7 @@ static esp_lcd_panel_handle_t start_panel(void)
 
     esp_lcd_panel_handle_t panel = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
-        .reset_gpio_num = PIN_RST,
+        .reset_gpio_num = reset_gpio,
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
         .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
         .bits_per_pixel = 16,
@@ -164,48 +168,77 @@ static esp_lcd_panel_handle_t start_panel(void)
     return panel;
 }
 
+typedef struct {
+    esp_lcd_panel_handle_t panel;
+    int mirror;
+    int shown_diameter;
+    int shown_x;
+    int shown_y;
+    int prev_x0;
+    int prev_y0;
+    int prev_x1;
+    int prev_y1;
+} eye_t;
+
+static void refresh_eye(eye_t *eye, uint16_t *buf, const pupil_pose_t *pose)
+{
+    const int raw_x = (int)lroundf(pose->offset_x);
+    const int raw_y = (int)lroundf(pose->offset_y);
+    const int offset_x = eye->mirror ? -raw_x : raw_x;
+
+    if (pose->diameter == eye->shown_diameter && offset_x == eye->shown_x && raw_y == eye->shown_y) {
+        return;
+    }
+
+    int x0, y0, x1, y1;
+    pupil_rect(pose->diameter, offset_x, raw_y, &x0, &y0, &x1, &y1);
+    if (eye->shown_diameter >= 0) {
+        x0 = x0 < eye->prev_x0 ? x0 : eye->prev_x0;
+        y0 = y0 < eye->prev_y0 ? y0 : eye->prev_y0;
+        x1 = x1 > eye->prev_x1 ? x1 : eye->prev_x1;
+        y1 = y1 > eye->prev_y1 ? y1 : eye->prev_y1;
+    }
+    draw_region(eye->panel, buf, x0, y0, x1, y1, pose->diameter, raw_x, raw_y, eye->mirror);
+    pupil_rect(pose->diameter, offset_x, raw_y, &eye->prev_x0, &eye->prev_y0, &eye->prev_x1, &eye->prev_y1);
+    eye->shown_diameter = pose->diameter;
+    eye->shown_x = offset_x;
+    eye->shown_y = raw_y;
+}
+
 void app_main(void)
 {
     s_flush_done = xSemaphoreCreateBinary();
     ESP_ERROR_CHECK(s_flush_done ? ESP_OK : ESP_ERR_NO_MEM);
 
-    esp_lcd_panel_handle_t panel = start_panel();
+    start_bus();
+    eye_t eyes[2] = {
+        {
+            .panel = start_panel(EYE1_CS, PIN_RST),
+            .mirror = 0,
+            .shown_diameter = -1,
+        },
+        {
+            /* Shared RES is already high. A second GPIO reset would clear eye 1. */
+            .panel = start_panel(EYE2_CS, -1),
+            .mirror = 1,
+            .shown_diameter = -1,
+        },
+    };
 
     uint16_t *buf = heap_caps_malloc(DRAW_BUF_PIXELS * sizeof(uint16_t), MALLOC_CAP_DMA);
     ESP_ERROR_CHECK(buf ? ESP_OK : ESP_ERR_NO_MEM);
-    fill_sclera(panel, buf);
+    fill_sclera(eyes[0].panel, buf);
+    fill_sclera(eyes[1].panel, buf);
 
     const int64_t start_us = esp_timer_get_time();
-    int shown_diameter = -1;
-    int shown_x = 0;
-    int shown_y = 0;
-    int prev_x0 = 0;
-    int prev_y0 = 0;
-    int prev_x1 = 0;
-    int prev_y1 = 0;
-    ESP_LOGI(TAG, "wide eye started");
+    ESP_LOGI(TAG, "wide eyes started");
 
     while (1) {
         const int64_t elapsed_ms = (esp_timer_get_time() - start_us) / 1000;
         pupil_pose_t pose;
         pupil_pose(elapsed_ms, &pose);
-        const int offset_x = (int)lroundf(pose.offset_x);
-        const int offset_y = (int)lroundf(pose.offset_y);
-        if (pose.diameter != shown_diameter || offset_x != shown_x || offset_y != shown_y) {
-            int x0, y0, x1, y1;
-            pupil_rect(pose.diameter, offset_x, offset_y, &x0, &y0, &x1, &y1);
-            if (shown_diameter >= 0) {
-                x0 = x0 < prev_x0 ? x0 : prev_x0;
-                y0 = y0 < prev_y0 ? y0 : prev_y0;
-                x1 = x1 > prev_x1 ? x1 : prev_x1;
-                y1 = y1 > prev_y1 ? y1 : prev_y1;
-            }
-            draw_region(panel, buf, x0, y0, x1, y1, pose.diameter, offset_x, offset_y);
-            pupil_rect(pose.diameter, offset_x, offset_y, &prev_x0, &prev_y0, &prev_x1, &prev_y1);
-            shown_diameter = pose.diameter;
-            shown_x = offset_x;
-            shown_y = offset_y;
-        }
+        refresh_eye(&eyes[0], buf, &pose);
+        refresh_eye(&eyes[1], buf, &pose);
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

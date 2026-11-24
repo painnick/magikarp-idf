@@ -20,7 +20,7 @@ static int black_run_at_row(int y, int diameter, int *first_out)
     int count = 0;
 
     for (int x = 0; x < PUPIL_VIEW_SIZE; x++) {
-        if (pupil_scene_color(x, y, diameter, 0.0f, 0.0f) == PUPIL_COLOR_BLACK) {
+        if (pupil_scene_color(x, y, diameter, 0.0f, 0.0f, 0) == PUPIL_COLOR_BLACK) {
             if (first < 0) {
                 first = x;
             }
@@ -82,13 +82,17 @@ static void test_wide_eye(void)
     expect_int("origin32", first, (PUPIL_VIEW_SIZE - PUPIL_DIAMETER_MAX) / 2);
     expect_int("span16", black_run_at_row(120, PUPIL_DIAMETER_MIN, &first), PUPIL_DIAMETER_MIN);
     expect_int("origin16", first, (PUPIL_VIEW_SIZE - PUPIL_DIAMETER_MIN) / 2);
-    expect_int("center", pupil_scene_color(120, 120, PUPIL_DIAMETER_MIN, 0.0f, 0.0f), PUPIL_COLOR_BLACK);
-    expect_int("highlight", pupil_scene_color(117, 116, PUPIL_DIAMETER_MIN, 0.0f, 0.0f), PUPIL_COLOR_SCLERA);
-    expect_int("sclera", pupil_scene_color(120, 70, PUPIL_DIAMETER_MAX, 0.0f, 0.0f), PUPIL_COLOR_SCLERA);
-    expect_int("corner", pupil_scene_color(0, 0, PUPIL_DIAMETER_MAX, 0.0f, 0.0f), PUPIL_COLOR_SCLERA);
-    expect_int("edge", pupil_scene_color(120, 0, PUPIL_DIAMETER_MAX, 0.0f, 0.0f), PUPIL_COLOR_SCLERA);
-    expect_int("shifted", pupil_scene_color(160, 120, PUPIL_DIAMETER_MIN, 40.0f, 0.0f), PUPIL_COLOR_BLACK);
-    expect_int("old-center", pupil_scene_color(120, 120, PUPIL_DIAMETER_MIN, 40.0f, 0.0f), PUPIL_COLOR_SCLERA);
+    expect_int("center", pupil_scene_color(120, 120, PUPIL_DIAMETER_MIN, 0.0f, 0.0f, 0), PUPIL_COLOR_BLACK);
+    expect_int("highlight", pupil_scene_color(117, 116, PUPIL_DIAMETER_MIN, 0.0f, 0.0f, 0), PUPIL_COLOR_SCLERA);
+    expect_int("sclera", pupil_scene_color(120, 70, PUPIL_DIAMETER_MAX, 0.0f, 0.0f, 0), PUPIL_COLOR_SCLERA);
+    expect_int("corner", pupil_scene_color(0, 0, PUPIL_DIAMETER_MAX, 0.0f, 0.0f, 0), PUPIL_COLOR_SCLERA);
+    expect_int("edge", pupil_scene_color(120, 0, PUPIL_DIAMETER_MAX, 0.0f, 0.0f, 0), PUPIL_COLOR_SCLERA);
+    expect_int("shifted", pupil_scene_color(160, 120, PUPIL_DIAMETER_MIN, 40.0f, 0.0f, 0), PUPIL_COLOR_BLACK);
+    expect_int("old-center", pupil_scene_color(120, 120, PUPIL_DIAMETER_MIN, 40.0f, 0.0f, 0), PUPIL_COLOR_SCLERA);
+    expect_int("mirror-highlight", pupil_scene_color(123, 116, PUPIL_DIAMETER_MIN, 0.0f, 0.0f, 1), PUPIL_COLOR_SCLERA);
+    expect_int("mirror-old-highlight", pupil_scene_color(117, 116, PUPIL_DIAMETER_MIN, 0.0f, 0.0f, 1), PUPIL_COLOR_BLACK);
+    expect_int("mirror-shifted", pupil_scene_color(80, 120, PUPIL_DIAMETER_MIN, 40.0f, 0.0f, 1), PUPIL_COLOR_BLACK);
+    expect_int("mirror-far", pupil_scene_color(160, 120, PUPIL_DIAMETER_MIN, 40.0f, 0.0f, 1), PUPIL_COLOR_SCLERA);
 }
 
 static void expect_near(const char *name, float actual, float expected)

@@ -71,10 +71,13 @@ def inside(x, y, size, offset_x=0.0, offset_y=0.0):
     return dx * dx + dy * dy <= size * size
 
 
-def scene(x, y, size, offset_x=0.0, offset_y=0.0):
+def scene(x, y, size, offset_x=0.0, offset_y=0.0, mirror=False):
     size = min(DIAMETER_MAX, max(DIAMETER_MIN, size))
+    hx, hy = HIGHLIGHT
+    if mirror:
+        offset_x = -offset_x
+        hx = 240 - hx
     if inside(x, y, size, offset_x, offset_y):
-        hx, hy = HIGHLIGHT
         if (x - (hx + offset_x)) ** 2 + (y - (hy + offset_y)) ** 2 <= HIGHLIGHT_RADIUS_SQ:
             return WHITE
         return BLACK
@@ -121,6 +124,10 @@ def main():
     assert scene(120, 0, DIAMETER_MAX) == WHITE
     assert scene(160, 120, DIAMETER_MIN, 40, 0) == BLACK
     assert scene(120, 120, DIAMETER_MIN, 40, 0) == WHITE
+    assert scene(123, 116, DIAMETER_MIN, mirror=True) == WHITE
+    assert scene(117, 116, DIAMETER_MIN, mirror=True) == BLACK
+    assert scene(80, 120, DIAMETER_MIN, 40, 0, True) == BLACK
+    assert scene(160, 120, DIAMETER_MIN, 40, 0, True) == WHITE
 
     rest_start = CYCLE_MS * PULSE_COUNT
     spin_start = rest_start + REST_MS + BRIDGE_MS

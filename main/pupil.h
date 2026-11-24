@@ -30,8 +30,9 @@ void pupil_pose(int64_t elapsed_ms, pupil_pose_t *pose);
 /* Diameter of the pose at elapsed_ms. */
 int pupil_diameter(int32_t elapsed_ms);
 
-/* Color of one screen pixel. Offsets move the pupil from screen center, in pixels. */
-uint16_t pupil_scene_color(int x, int y, int diameter, float offset_x, float offset_y);
+/* Color of one screen pixel. Offsets move the pupil from screen center, in pixels.
+ * mirror reflects the pupil and highlight across the vertical center. */
+uint16_t pupil_scene_color(int x, int y, int diameter, float offset_x, float offset_y, int mirror);
 
 /* Raster `line_count` rows starting at `y0` into a PUPIL_VIEW_SIZE-wide buffer. */
-void pupil_render_stripe(uint16_t *pixels, int y0, int line_count, int diameter, float offset_x, float offset_y);
+void pupil_render_stripe(uint16_t *pixels, int y0, int line_count, int diameter, float offset_x, float offset_y, int mirror);
